@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cuidados Chelita v1</title>
+<meta name="description" content="Bitácora de signos vitales de Chelita">
+<meta name="theme-color" content="#C0707A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Chelita v1">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --rose:#C0707A;--rose-light:#E8B4B8;--rose-pale:#FDF0F1;
+  --cream:#FAF6F0;--warm-white:#FFFCF9;
+  --brown:#6B4C3B;--sage:#7A9E7E;
+  --text:#3A2E2E;--text-soft:#7A6A6A;
+  --border:#E8DCDC;--shadow:rgba(192,112,122,0.12);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);min-height:100vh;}
+
+/* SYNC BAR */
+.sync-bar{background:#fff;border-bottom:1px solid var(--border);padding:5px 20px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-soft);}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#ccc;flex-shrink:0;transition:background 0.3s;}
+.sync-dot.online{background:var(--sage);}
+.sync-dot.syncing{background:#D4A850;animation:pulse 1s infinite;}
+.sync-dot.error{background:var(--rose);}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+/* HEADER */
+.header{background:linear-gradient(135deg,#C0707A 0%,#A05060 60%,#7A3848 100%);color:white;padding:18px 32px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 24px rgba(120,50,60,0.25);position:relative;overflow:hidden;}
+.header::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,0.06);}
+.header-left{display:flex;align-items:center;gap:12px;}
+.header-icon{font-size:30px;}
+.header-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;}
+.header-sub{font-size:11px;opacity:0.8;font-weight:300;}
+.header-date{font-size:11px;opacity:0.85;text-align:right;line-height:1.7;}
+
+/* CAREGIVER BAR */
+.caregiver-bar{background:var(--warm-white);border-bottom:1px solid var(--border);padding:11px 32px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.caregiver-label{font-size:12px;color:var(--text-soft);font-weight:500;}
+.caregiver-btn{display:flex;align-items:center;gap:7px;padding:6px 15px;border-radius:50px;border:2px solid var(--border);background:white;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text-soft);transition:all 0.2s;}
+.caregiver-btn:hover{border-color:var(--rose-light);color:var(--rose);}
+.caregiver-btn.active{background:var(--rose);border-color:var(--rose);color:white;box-shadow:0 3px 12px var(--shadow);}
+.caregiver-avatar{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:rgba(255,255,255,0.25);}
+.caregiver-btn:not(.active) .caregiver-avatar{background:var(--rose-pale);color:var(--rose);}
+
+/* TABS */
+.tabs{display:flex;background:var(--warm-white);border-bottom:2px solid var(--border);padding:0 32px;}
+.tab-btn{padding:13px 22px;border:none;background:none;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text-soft);cursor:pointer;position:relative;transition:color 0.2s;display:flex;align-items:center;gap:6px;}
+.tab-btn::after{content:'';position:absolute;bottom:-2px;left:0;right:0;height:2px;background:var(--rose);border-radius:2px 2px 0 0;transform:scaleX(0);transition:transform 0.2s;}
+.tab-btn.active{color:var(--rose);font-weight:600;}
+.tab-btn.active::after{transform:scaleX(1);}
+
+/* TAB PANELS */
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+
+/* REGISTRO */
+.registro-grid{display:grid;grid-template-columns:1fr 1fr;min-height:calc(100vh - 185px);}
+.panel-left{padding:22px 28px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:18px;}
+.panel-right{padding:22px 28px;display:flex;flex-direction:column;gap:16px;}
+.section-title{font-family:'Playfair Display',serif;font-size:15px;font-weight:600;color:var(--brown);display:flex;align-items:center;gap:7px;margin-bottom:2px;}
+
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;}
+.stat-card{background:white;border-radius:12px;padding:13px 10px;border:1px solid var(--border);text-align:center;box-shadow:0 2px 8px var(--shadow);}
+.stat-icon{font-size:18px;margin-bottom:3px;}
+.stat-value{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--rose);line-height:1;}
+.stat-label{font-size:10px;color:var(--text-soft);margin-top:3px;font-weight:500;}
+
+/* FORM */
+.vitals-form{background:white;border-radius:14px;padding:18px;border:1px solid var(--border);box-shadow:0 2px 12px var(--shadow);}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:13px;}
+.form-field{display:flex;flex-direction:column;gap:5px;}
+.form-field.full{grid-column:1/-1;}
+.field-label{font-size:11px;font-weight:600;color:var(--text-soft);text-transform:uppercase;letter-spacing:0.6px;display:flex;align-items:center;gap:4px;}
+.field-input{padding:8px 11px;border:1.5px solid var(--border);border-radius:9px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--warm-white);transition:border-color 0.2s,box-shadow 0.2s;outline:none;width:100%;}
+.field-input:focus{border-color:var(--rose);box-shadow:0 0 0 3px rgba(192,112,122,0.1);background:white;}
+textarea.field-input{resize:vertical;min-height:60px;}
+.status-row{display:flex;gap:7px;margin-top:3px;}
+.status-chip{flex:1;padding:8px 4px;border-radius:9px;border:1.5px solid var(--border);background:var(--warm-white);text-align:center;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;color:var(--text-soft);}
+.status-chip.good{--c:var(--sage);}
+.status-chip.fair{--c:#D4A850;}
+.status-chip.poor{--c:var(--rose);}
+.status-chip.active{background:var(--c);border-color:var(--c);color:white;}
+.btn-submit{margin-top:13px;width:100%;padding:11px;background:linear-gradient(135deg,var(--rose) 0%,#A05060 100%);color:white;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 14px var(--shadow);display:flex;align-items:center;justify-content:center;gap:7px;}
+.btn-submit:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(192,112,122,0.35);}
+.btn-submit:disabled{opacity:0.6;cursor:not-allowed;transform:none;}
+
+/* BITACORA */
+.bitacora-wrap{padding:22px 32px;display:flex;flex-direction:column;gap:15px;}
+.bitacora-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
+.btn-pdf{display:flex;align-items:center;gap:6px;padding:8px 16px;background:white;border:1.5px solid var(--border);border-radius:50px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--brown);cursor:pointer;transition:all 0.2s;}
+.btn-pdf:hover{border-color:var(--rose-light);background:var(--rose-pale);}
+.btn-pdf:disabled{opacity:0.5;cursor:not-allowed;}
+.btn-refresh{display:flex;align-items:center;gap:5px;padding:7px 14px;background:var(--rose-pale);border:1.5px solid var(--rose-light);border-radius:50px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:var(--rose);cursor:pointer;transition:all 0.2s;}
+.btn-refresh:hover{background:var(--rose);color:white;}
+.filter-row{display:flex;gap:7px;flex-wrap:wrap;}
+.filter-chip{padding:4px 13px;border-radius:50px;border:1.5px solid var(--border);background:white;font-size:12px;font-weight:500;color:var(--text-soft);cursor:pointer;transition:all 0.18s;}
+.filter-chip.active{background:var(--rose-pale);border-color:var(--rose-light);color:var(--rose);}
+.log-container{display:flex;flex-direction:column;gap:9px;max-height:520px;overflow-y:auto;padding-right:4px;}
+.log-container::-webkit-scrollbar{width:4px;}
+.log-container::-webkit-scrollbar-thumb{background:var(--rose-light);border-radius:4px;}
+.log-entry{background:white;border-radius:12px;border:1px solid var(--border);padding:13px 15px;border-left:4px solid var(--rose-light);box-shadow:0 2px 8px var(--shadow);animation:slideIn 0.3s ease;}
+.log-entry.good{border-left-color:var(--sage);}
+.log-entry.fair{border-left-color:#D4A850;}
+.log-entry.poor{border-left-color:var(--rose);}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+.log-meta{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+.log-caregiver{display:flex;align-items:center;gap:7px;}
+.log-avatar{width:26px;height:26px;border-radius:50%;background:var(--rose-pale);color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;}
+.log-name{font-size:12px;font-weight:600;color:var(--brown);}
+.log-time{font-size:11px;color:var(--text-soft);}
+.log-vitals{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:5px;}
+.vital-badge{display:flex;align-items:center;gap:4px;background:var(--rose-pale);padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500;color:var(--brown);}
+.log-status-badge{padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;}
+.log-status-badge.good{background:#E8F5E9;color:#388E3C;}
+.log-status-badge.fair{background:#FFF8E1;color:#F57F17;}
+.log-status-badge.poor{background:#FFEBEE;color:#C62828;}
+.log-notes{font-size:12px;color:var(--text-soft);line-height:1.5;margin-top:5px;padding-top:6px;border-top:1px solid var(--border);font-style:italic;}
+.empty-state{text-align:center;padding:44px 24px;color:var(--text-soft);}
+.empty-icon{font-size:40px;margin-bottom:9px;}
+.empty-msg{font-size:13px;}
+.loading-state{text-align:center;padding:32px;color:var(--text-soft);font-size:13px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--rose);border-radius:50%;animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* GRAFICAS */
+.graficas-panel{padding:24px 32px;display:flex;flex-direction:column;gap:22px;}
+.chart-controls{background:white;border-radius:14px;padding:16px 20px;border:1px solid var(--border);box-shadow:0 2px 8px var(--shadow);display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;}
+.ctrl-field{display:flex;flex-direction:column;gap:4px;}
+.ctrl-label{font-size:10px;font-weight:600;color:var(--text-soft);text-transform:uppercase;letter-spacing:0.5px;}
+.ctrl-input{padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);background:var(--warm-white);outline:none;}
+.ctrl-input:focus{border-color:var(--rose);}
+.btn-apply{padding:8px 18px;background:var(--rose);color:white;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;}
+.btn-apply:hover{background:#A05060;}
+.quick-range{display:flex;gap:5px;flex-wrap:wrap;}
+.qr-btn{padding:5px 11px;border-radius:50px;border:1.5px solid var(--border);background:white;font-size:11px;font-weight:500;color:var(--text-soft);cursor:pointer;transition:all 0.18s;}
+.qr-btn:hover{border-color:var(--rose-light);color:var(--rose);}
+.qr-btn.active{background:var(--rose-pale);border-color:var(--rose-light);color:var(--rose);}
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.chart-card{background:white;border-radius:14px;padding:16px 18px;border:1px solid var(--border);box-shadow:0 2px 10px var(--shadow);}
+.chart-card.full{grid-column:1/-1;}
+.chart-title{font-family:'Playfair Display',serif;font-size:14px;font-weight:600;color:var(--brown);margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.chart-wrap{position:relative;height:190px;}
+.chart-wrap.tall{height:210px;}
+.no-data{display:flex;align-items:center;justify-content:center;height:170px;color:var(--text-soft);font-size:12px;flex-direction:column;gap:7px;}
+
+/* TOAST */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--brown);color:white;padding:10px 20px;border-radius:50px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,0.2);transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);z-index:999;pointer-events:none;white-space:nowrap;}
+.toast.show{transform:translateX(-50%) translateY(0);}
+
+/* OFFLINE BANNER */
+.offline-banner{display:none;background:#F57F17;color:white;text-align:center;padding:6px;font-size:12px;font-weight:500;}
+.offline-banner.show{display:block;}
+
+@media(max-width:900px){
+  .registro-grid,.charts-grid{grid-template-columns:1fr;}
+  .panel-left{border-right:none;border-bottom:1px solid var(--border);}
+  .graficas-panel,.bitacora-wrap{padding:16px;}
+  .header{padding:14px 16px;}
+  .tabs{padding:0 10px;}
+  .caregiver-bar{padding:10px 16px;}
+  .tab-btn{padding:11px 14px;font-size:13px;}
+}
+</style>
+</head>
+<body>
+
+<div class="offline-banner" id="offlineBanner">📡 Sin conexión — los datos se guardarán cuando vuelva la red</div>
+
+<div class="sync-bar">
+  <div class="sync-dot" id="syncDot"></div>
+  <span id="syncLabel">Conectando...</span>
+</div>
+
+<header class="header">
+  <div class="header-left">
+    <div class="header-icon">🌸</div>
+    <div>
+      <div class="header-title">Cuidados Chelita v1</div>
+      <div class="header-sub">Bitácora de signos vitales</div>
+    </div>
+  </div>
+  <div class="header-date" id="headerDate"></div>
+</header>
+
+<div class="caregiver-bar">
+  <span class="caregiver-label">Cuidador activo:</span>
+  <button class="caregiver-btn active" onclick="selectCaregiver(0)"><div class="caregiver-avatar">YE</div>Yessica</button>
+  <button class="caregiver-btn" onclick="selectCaregiver(1)"><div class="caregiver-avatar">MA</div>Mayte</button>
+  <button class="caregiver-btn" onclick="selectCaregiver(2)"><div class="caregiver-avatar">JZ</div>Jazmin</button>
+  <button class="caregiver-btn" onclick="selectCaregiver(3)"><div class="caregiver-avatar">JD</div>Juan David</button>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('registro',this)">📝 Registro</button>
+  <button class="tab-btn" onclick="switchTab('bitacora',this)">📖 Bitácora</button>
+  <button class="tab-btn" onclick="switchTab('graficas',this)">📊 Gráficas</button>
+</div>
+
+<!-- REGISTRO -->
+<div class="tab-panel active" id="tab-registro">
+  <div class="registro-grid">
+    <div class="panel-left">
+      <div class="vitals-form">
+        <div class="section-title"><span>📝</span> Nuevo registro</div>
+        <div class="form-grid">
+          <div class="form-field"><label class="field-label"><span>❤️</span> Presión arterial</label><input class="field-input" id="fBP" placeholder="ej. 120/80" type="text"></div>
+          <div class="form-field"><label class="field-label"><span>💓</span> Frec. cardíaca</label><input class="field-input" id="fHR" placeholder="ej. 72" type="number"></div>
+          <div class="form-field"><label class="field-label"><span>🌡️</span> Temperatura (°C)</label><input class="field-input" id="fTemp" placeholder="ej. 36.5" type="number" step="0.1"></div>
+          <div class="form-field"><label class="field-label"><span>💨</span> Saturación O₂ (%)</label><input class="field-input" id="fO2" placeholder="ej. 97" type="number"></div>
+          <div class="form-field"><label class="field-label"><span>💛</span> Bilis (ml)</label><input class="field-input" id="fBilis" placeholder="ej. 150" type="number"></div>
+          <div class="form-field"><label class="field-label"><span>🔢</span> Evacuaciones</label><input class="field-input" id="fEvac" placeholder="ej. 2" type="number" min="0"></div>
+          <div class="form-field">
+            <label class="field-label"><span>🟤</span> Consistencia heces</label>
+            <select class="field-input" id="fConsistencia">
+              <option value="">— Seleccionar —</option>
+              <option>Líquida</option><option>Semilíquida</option><option>Blanda</option>
+              <option>Formada</option><option>Dura</option><option>Sin evacuación</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="field-label"><span>🎨</span> Color heces</label>
+            <select class="field-input" id="fColor">
+              <option value="">— Seleccionar —</option>
+              <option>Café normal</option><option>Café oscuro</option><option>Amarillo</option>
+              <option>Verde</option><option>Negro (melena)</option><option>Rojo (sangre)</option><option>Gris/blancuzco</option>
+            </select>
+          </div>
+          <div class="form-field full">
+            <label class="field-label"><span>🟢</span> Estado general</label>
+            <div class="status-row">
+              <div class="status-chip good" onclick="selectStatus('good',this)">🟢 Bien</div>
+              <div class="status-chip fair" onclick="selectStatus('fair',this)">🟡 Regular</div>
+              <div class="status-chip poor" onclick="selectStatus('poor',this)">🔴 Delicado</div>
+            </div>
+          </div>
+          <div class="form-field full">
+            <label class="field-label"><span>💬</span> Observaciones</label>
+            <textarea class="field-input" id="fNotes" placeholder="Síntomas, medicamentos, comportamiento general..."></textarea>
+          </div>
+        </div>
+        <button class="btn-submit" id="btnSave" onclick="saveRecord()"><span>💾</span> Guardar registro</button>
+      </div>
+    </div>
+    <div class="panel-right">
+      <div class="section-title"><span>📊</span> Últimos valores</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-icon">❤️</div><div class="stat-value" id="lastBP">—</div><div class="stat-label">Presión arterial</div></div>
+        <div class="stat-card"><div class="stat-icon">💓</div><div class="stat-value" id="lastHR">—</div><div class="stat-label">Frec. cardíaca</div></div>
+        <div class="stat-card"><div class="stat-icon">🌡️</div><div class="stat-value" id="lastTemp">—</div><div class="stat-label">Temperatura</div></div>
+        <div class="stat-card"><div class="stat-icon">💨</div><div class="stat-value" id="lastO2">—</div><div class="stat-label">Saturación O₂</div></div>
+        <div class="stat-card"><div class="stat-icon">💛</div><div class="stat-value" id="lastBilis">—</div><div class="stat-label">Bilis (ml)</div></div>
+        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-value" id="totalLogs">0</div><div class="stat-label">Total registros</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BITACORA -->
+<div class="tab-panel" id="tab-bitacora">
+  <div class="bitacora-wrap">
+    <div class="bitacora-header">
+      <div class="section-title"><span>📖</span> Bitácora compartida</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-refresh" onclick="loadRecords()">🔄 Actualizar</button>
+        <button class="btn-pdf" id="btnPdf" onclick="exportPDF()">🖨️ Exportar PDF</button>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-chip active" onclick="applyFilter('all',this)">Todos</div>
+      <div class="filter-chip" onclick="applyFilter('Yessica',this)">Yessica</div>
+      <div class="filter-chip" onclick="applyFilter('Mayte',this)">Mayte</div>
+      <div class="filter-chip" onclick="applyFilter('Jazmin',this)">Jazmin</div>
+      <div class="filter-chip" onclick="applyFilter('Juan David',this)">Juan David</div>
+      <div class="filter-chip" onclick="applyFilter('good',this)">🟢 Bien</div>
+      <div class="filter-chip" onclick="applyFilter('fair',this)">🟡 Regular</div>
+      <div class="filter-chip" onclick="applyFilter('poor',this)">🔴 Delicado</div>
+    </div>
+    <div class="log-container" id="logContainer">
+      <div class="loading-state"><div class="spinner"></div>Cargando registros...</div>
+    </div>
+  </div>
+</div>
+
+<!-- GRAFICAS -->
+<div class="tab-panel" id="tab-graficas">
+  <div class="graficas-panel">
+    <div class="chart-controls">
+      <div class="ctrl-field"><span class="ctrl-label">Desde</span><input type="date" class="ctrl-input" id="chartFrom"></div>
+      <div class="ctrl-field"><span class="ctrl-label">Hasta</span><input type="date" class="ctrl-input" id="chartTo"></div>
+      <button class="btn-apply" onclick="applyChartRange()">Actualizar</button>
+      <div class="ctrl-field">
+        <span class="ctrl-label">Acceso rápido</span>
+        <div class="quick-range">
+          <button class="qr-btn" onclick="setRange(1,this)">Hoy</button>
+          <button class="qr-btn" onclick="setRange(3,this)">3 días</button>
+          <button class="qr-btn active" onclick="setRange(7,this)">7 días</button>
+          <button class="qr-btn" onclick="setRange(14,this)">14 días</button>
+          <button class="qr-btn" onclick="setRange(30,this)">30 días</button>
+          <button class="qr-btn" onclick="setRange(0,this)">Todo</button>
+        </div>
+      </div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card"><div class="chart-title"><span>💓</span> Frecuencia cardíaca (lpm)</div><div class="chart-wrap" id="wrapHR"><canvas id="chartHR"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title"><span>🌡️</span> Temperatura (°C)</div><div class="chart-wrap" id="wrapTemp"><canvas id="chartTemp"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title"><span>💨</span> Saturación O₂ (%)</div><div class="chart-wrap" id="wrapO2"><canvas id="chartO2"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title"><span>💛</span> Bilis (ml)</div><div class="chart-wrap" id="wrapBilis"><canvas id="chartBilis"></canvas></div></div>
+      <div class="chart-card full"><div class="chart-title"><span>🔢</span> Evacuaciones por día</div><div class="chart-wrap tall" id="wrapEvac"><canvas id="chartEvac"></canvas></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══ SUPABASE ══ */
+const SUPABASE_URL = 'https://ouapoetjbcrpfbidhbgy.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91YXBvZXRqYmNycGZiaWRoYmd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MDg4NTIsImV4cCI6MjA5NDQ4NDg1Mn0.KOLzCHlJknhgm-wj1t9PZE8APdLcdt0dOaTsFh0WzwM';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ══ STATE ══ */
+const CAREGIVERS=[
+  {name:'Yessica',initials:'YE'},
+  {name:'Mayte',initials:'MA'},
+  {name:'Jazmin',initials:'JZ'},
+  {name:'Juan David',initials:'JD'},
+];
+let activeCaregiver=0, activeStatus='', activeFilter='all';
+let records=[], chartInstances={};
+let isOnline=navigator.onLine;
+
+/* ══ OFFLINE QUEUE (localStorage) ══ */
+function getPendingQueue(){try{return JSON.parse(localStorage.getItem('chelita_pending')||'[]');}catch{return[];}}
+function savePendingQueue(q){try{localStorage.setItem('chelita_pending',JSON.stringify(q));}catch{}}
+function getCachedRecords(){try{return JSON.parse(localStorage.getItem('chelita_cache')||'[]');}catch{return[];}}
+function saveCachedRecords(r){try{localStorage.setItem('chelita_cache',JSON.stringify(r));}catch{}}
+
+/* ══ ONLINE/OFFLINE ══ */
+function setOnlineStatus(online){
+  isOnline=online;
+  const dot=document.getElementById('syncDot');
+  const lbl=document.getElementById('syncLabel');
+  const banner=document.getElementById('offlineBanner');
+  if(online){
+    dot.className='sync-dot online';
+    lbl.textContent='Conectado y sincronizado';
+    banner.classList.remove('show');
+    flushPendingQueue();
+  } else {
+    dot.className='sync-dot error';
+    lbl.textContent='Sin conexión — guardando localmente';
+    banner.classList.add('show');
+  }
+}
+window.addEventListener('online',()=>setOnlineStatus(true));
+window.addEventListener('offline',()=>setOnlineStatus(false));
+
+async function flushPendingQueue(){
+  const q=getPendingQueue();
+  if(!q.length) return;
+  setSyncing();
+  let failed=[];
+  for(const item of q){
+    const{error}=await sb.from('registros').insert([item]);
+    if(error) failed.push(item);
+  }
+  savePendingQueue(failed);
+  if(!failed.length){
+    showToast('☁️ Registros offline sincronizados');
+    await loadRecords();
+  }
+  setOnlineStatus(true);
+}
+function setSyncing(){
+  document.getElementById('syncDot').className='sync-dot syncing';
+  document.getElementById('syncLabel').textContent='Sincronizando...';
+}
+
+/* ══ CLOCK ══ */
+function updateHeaderDate(){
+  const el=document.getElementById('headerDate'),now=new Date();
+  el.innerHTML=new Intl.DateTimeFormat('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(now)
+    +'<br>'+new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(now);
+}
+updateHeaderDate(); setInterval(updateHeaderDate,1000);
+
+/* ══ TABS ══ */
+function switchTab(name,el){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  el.classList.add('active');
+  if(name==='graficas') setTimeout(renderCharts,60);
+}
+
+/* ══ CAREGIVERS ══ */
+function selectCaregiver(idx){
+  activeCaregiver=idx;
+  document.querySelectorAll('.caregiver-btn').forEach((b,i)=>b.classList.toggle('active',i===idx));
+}
+function selectStatus(s,el){
+  activeStatus=s;
+  document.querySelectorAll('.status-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+/* ══ LOAD FROM SUPABASE ══ */
+async function loadRecords(){
+  setSyncing();
+  try{
+    const{data,error}=await sb.from('registros').select('*').order('datetime',{ascending:false}).limit(500);
+    if(error) throw error;
+    records=data.map(r=>({
+      id:r.id, caregiver:r.caregiver, initials:r.initials||'??',
+      status:r.status||'fair', bp:r.bp||'', hr:r.hr||'',
+      temp:r.temp||'', o2:r.o2||'', bilis:r.bilis||'',
+      evac:r.evac||'', consistencia:r.consistencia||'',
+      colorHeces:r.color_heces||'', notes:r.notes||'',
+      datetime:r.datetime,
+    }));
+    saveCachedRecords(records);
+    setOnlineStatus(true);
+  } catch(e){
+    // use cache
+    records=getCachedRecords();
+    setOnlineStatus(false);
+  }
+  renderLog();
+  updateStats();
+}
+
+/* ══ SAVE ══ */
+async function saveRecord(){
+  const bp=document.getElementById('fBP').value.trim();
+  const hr=document.getElementById('fHR').value.trim();
+  const temp=document.getElementById('fTemp').value.trim();
+  const o2=document.getElementById('fO2').value.trim();
+  const bilis=document.getElementById('fBilis').value.trim();
+  const evac=document.getElementById('fEvac').value.trim();
+  const cons=document.getElementById('fConsistencia').value;
+  const col=document.getElementById('fColor').value;
+  const notes=document.getElementById('fNotes').value.trim();
+  if(!bp&&!hr&&!temp&&!o2){showToast('⚠️ Captura al menos un signo vital');return;}
+
+  const payload={
+    caregiver:CAREGIVERS[activeCaregiver].name,
+    initials:CAREGIVERS[activeCaregiver].initials,
+    status:activeStatus||'fair',
+    bp:bp||null, hr:hr||null, temp:temp||null, o2:o2||null,
+    bilis:bilis||null, evac:evac||null,
+    consistencia:cons||null, color_heces:col||null,
+    notes:notes||null,
+    datetime:new Date().toISOString(),
+  };
+
+  const btn=document.getElementById('btnSave');
+  btn.disabled=true; btn.innerHTML='<span>⏳</span> Guardando...';
+
+  if(isOnline){
+    setSyncing();
+    const{error}=await sb.from('registros').insert([payload]);
+    if(error){
+      showToast('❌ Error al guardar: '+error.message);
+      btn.disabled=false; btn.innerHTML='<span>💾</span> Guardar registro';
+      return;
+    }
+    showToast('✅ Registro guardado en la nube');
+    await loadRecords();
+  } else {
+    // Save to pending queue
+    const q=getPendingQueue();
+    q.push(payload);
+    savePendingQueue(q);
+    // Also add to local cache for immediate display
+    records.unshift({...payload,id:Date.now(),colorHeces:col});
+    saveCachedRecords(records);
+    renderLog(); updateStats();
+    showToast('📴 Guardado localmente — se sincronizará al conectarse');
+  }
+
+  clearForm();
+  btn.disabled=false; btn.innerHTML='<span>💾</span> Guardar registro';
+}
+
+function clearForm(){
+  ['fBP','fHR','fTemp','fO2','fBilis','fEvac','fNotes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('fConsistencia').value='';
+  document.getElementById('fColor').value='';
+  activeStatus='';
+  document.querySelectorAll('.status-chip').forEach(c=>c.classList.remove('active'));
+}
+
+/* ══ STATS ══ */
+function updateStats(){
+  const l=records[0];
+  document.getElementById('lastBP').textContent=l?.bp||'—';
+  document.getElementById('lastHR').textContent=l?.hr?l.hr+' lpm':'—';
+  document.getElementById('lastTemp').textContent=l?.temp?l.temp+'°':'—';
+  document.getElementById('lastO2').textContent=l?.o2?l.o2+'%':'—';
+  document.getElementById('lastBilis').textContent=l?.bilis?l.bilis+' ml':'—';
+  document.getElementById('totalLogs').textContent=records.length;
+}
+
+/* ══ LOG ══ */
+function applyFilter(f,el){
+  activeFilter=f;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderLog();
+}
+function fmtDT(dt){
+  return new Intl.DateTimeFormat('es-MX',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(dt));
+}
+function renderLog(){
+  const cont=document.getElementById('logContainer');
+  let filtered=records;
+  if(activeFilter!=='all'){
+    if(['good','fair','poor'].includes(activeFilter)) filtered=records.filter(r=>r.status===activeFilter);
+    else filtered=records.filter(r=>r.caregiver===activeFilter);
+  }
+  if(!filtered.length){
+    cont.innerHTML='<div class="empty-state"><div class="empty-icon">🌸</div><div class="empty-msg">No hay registros que mostrar.</div></div>';
+    return;
+  }
+  const SL={good:'Bien',fair:'Regular',poor:'Delicado'};
+  const SE={good:'🟢',fair:'🟡',poor:'🔴'};
+  cont.innerHTML=filtered.map(r=>{
+    const v=[];
+    if(r.bp)           v.push(`<div class="vital-badge">❤️ ${r.bp}</div>`);
+    if(r.hr)           v.push(`<div class="vital-badge">💓 ${r.hr} lpm</div>`);
+    if(r.temp)         v.push(`<div class="vital-badge">🌡️ ${r.temp}°C</div>`);
+    if(r.o2)           v.push(`<div class="vital-badge">💨 ${r.o2}%</div>`);
+    if(r.bilis)        v.push(`<div class="vital-badge">💛 ${r.bilis} ml</div>`);
+    if(r.evac)         v.push(`<div class="vital-badge">🔢 ${r.evac} evacuac.</div>`);
+    if(r.consistencia) v.push(`<div class="vital-badge">🟤 ${r.consistencia}</div>`);
+    if(r.colorHeces)   v.push(`<div class="vital-badge">🎨 ${r.colorHeces}</div>`);
+    return `<div class="log-entry ${r.status}">
+      <div class="log-meta">
+        <div class="log-caregiver">
+          <div class="log-avatar">${r.initials}</div>
+          <div><div class="log-name">${r.caregiver}</div><div class="log-time">${fmtDT(r.datetime)}</div></div>
+        </div>
+        <span class="log-status-badge ${r.status}">${SE[r.status]||'🟡'} ${SL[r.status]||'Regular'}</span>
+      </div>
+      <div class="log-vitals">${v.join('')}</div>
+      ${r.notes?`<div class="log-notes">💬 ${r.notes}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+/* ══ PDF ══ */
+async function exportPDF(){
+  if(!records.length){showToast('⚠️ No hay registros para exportar');return;}
+  const btn=document.getElementById('btnPdf');
+  btn.disabled=true; btn.textContent='⏳ Generando...';
+  try{
+    const{jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    const PW=210,ML=14,MR=14,TW=PW-ML-MR;
+    doc.setFillColor(192,112,122); doc.rect(0,0,PW,30,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold'); doc.setFontSize(18);
+    doc.text('Cuidados Chelita v1',ML,13);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('Bitacora de signos vitales',ML,20);
+    const now=new Intl.DateTimeFormat('es-MX',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date());
+    doc.text('Generado: '+now,PW-MR,20,{align:'right'});
+    doc.setFontSize(9); doc.text('Total: '+records.length+' registros',PW-MR,26,{align:'right'});
+    let y=38;
+    const SL={good:'Bien',fair:'Regular',poor:'Delicado'};
+    const SC={good:[56,142,60],fair:[213,155,30],poor:[192,112,122]};
+    for(const r of records){
+      const vitals=[];
+      if(r.bp)           vitals.push('PA: '+r.bp);
+      if(r.hr)           vitals.push('FC: '+r.hr+' lpm');
+      if(r.temp)         vitals.push('Temp: '+r.temp+'C');
+      if(r.o2)           vitals.push('SpO2: '+r.o2+'%');
+      if(r.bilis)        vitals.push('Bilis: '+r.bilis+' ml');
+      if(r.evac)         vitals.push('Evacuac: '+r.evac);
+      if(r.consistencia) vitals.push('Consist: '+r.consistencia);
+      if(r.colorHeces)   vitals.push('Color: '+r.colorHeces);
+      const vLine=doc.splitTextToSize(vitals.join('  |  '),TW-4);
+      const nLines=r.notes?doc.splitTextToSize(r.notes,TW-4):[];
+      const blockH=11+vLine.length*4.5+(nLines.length?nLines.length*3.8+3:0)+5;
+      if(y+blockH>285){doc.addPage();y=14;}
+      doc.setFillColor(253,248,246); doc.roundedRect(ML,y,TW,blockH-3,2,2,'F');
+      const c=SC[r.status]||SC.fair;
+      doc.setFillColor(...c); doc.roundedRect(ML,y,3,blockH-3,1,1,'F');
+      doc.setTextColor(107,76,59); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.text(r.caregiver,ML+6,y+5);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(122,106,106);
+      doc.text(fmtDT(r.datetime),ML+6,y+9.5);
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...c);
+      doc.text(SL[r.status]||'Regular',PW-MR,y+5,{align:'right'});
+      if(vitals.length){
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(58,46,46);
+        doc.text(vLine,ML+4,y+14); y+=vLine.length*4.5;
+      } else {y+=4;}
+      if(r.notes){
+        y+=3; doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(122,106,106);
+        doc.text(nLines,ML+4,y+11); y+=nLines.length*3.8+11;
+      } else {y+=11;}
+      y+=6;
+    }
+    const pc=doc.internal.getNumberOfPages();
+    for(let i=1;i<=pc;i++){
+      doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(180,150,150);
+      doc.text('Cuidados Chelita v1',ML,292);
+      doc.text('Pag '+i+' de '+pc,PW-MR,292,{align:'right'});
+    }
+    doc.save('cuidados-chelita-'+new Date().toISOString().slice(0,10)+'.pdf');
+    showToast('✅ PDF descargado');
+  } catch(err){
+    showToast('❌ Error: '+err.message);
+  } finally{
+    btn.disabled=false; btn.innerHTML='🖨️ Exportar PDF';
+  }
+}
+
+/* ══ CHARTS ══ */
+function getDateRange(){
+  const from=document.getElementById('chartFrom').value;
+  const to=document.getElementById('chartTo').value;
+  return{from:from?new Date(from+'T00:00:00'):null,to:to?new Date(to+'T23:59:59'):null};
+}
+function setRange(days,el){
+  document.querySelectorAll('.qr-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  const to=new Date(); to.setHours(23,59,59);
+  if(days===0){
+    document.getElementById('chartFrom').value='';
+    document.getElementById('chartTo').value='';
+  } else {
+    const from=new Date(); from.setDate(from.getDate()-(days-1)); from.setHours(0,0,0);
+    document.getElementById('chartFrom').value=from.toISOString().slice(0,10);
+    document.getElementById('chartTo').value=to.toISOString().slice(0,10);
+  }
+  renderCharts();
+}
+function applyChartRange(){document.querySelectorAll('.qr-btn').forEach(b=>b.classList.remove('active'));renderCharts();}
+function filteredByRange(){
+  const{from,to}=getDateRange();
+  return records.filter(r=>{
+    const d=new Date(r.datetime);
+    if(from&&d<from) return false;
+    if(to&&d>to) return false;
+    return true;
+  }).slice().reverse();
+}
+function shortLbl(dt){
+  return new Intl.DateTimeFormat('es-MX',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(dt));
+}
+function destroyChart(id){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}}
+function noDataMsg(wrapId){document.getElementById(wrapId).innerHTML='<div class="no-data"><span style="font-size:26px">📭</span>Sin datos en el rango</div>';}
+function makeLineChart(cid,wid,pts,label,color,yMin,yMax){
+  destroyChart(cid);
+  if(!pts.length){noDataMsg(wid);return;}
+  document.getElementById(wid).innerHTML='<canvas id="'+cid+'"></canvas>';
+  const ctx=document.getElementById(cid).getContext('2d');
+  chartInstances[cid]=new Chart(ctx,{type:'line',
+    data:{labels:pts.map(p=>p.lbl),datasets:[{label,data:pts.map(p=>p.val),borderColor:color,backgroundColor:color+'28',tension:0.35,pointRadius:4,pointHoverRadius:6,fill:true,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:'#f0e8e8'},ticks:{font:{size:10},maxRotation:45,maxTicksLimit:10}},
+        y:{grid:{color:'#f0e8e8'},ticks:{font:{size:10}},min:yMin??undefined,max:yMax??undefined}}}});
+}
+function makeBarChart(cid,wid,labels,values,color){
+  destroyChart(cid);
+  if(!values.some(v=>v>0)){noDataMsg(wid);return;}
+  document.getElementById(wid).innerHTML='<canvas id="'+cid+'"></canvas>';
+  const ctx=document.getElementById(cid).getContext('2d');
+  chartInstances[cid]=new Chart(ctx,{type:'bar',
+    data:{labels,datasets:[{data:values,backgroundColor:color+'99',borderColor:color,borderWidth:1.5,borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45}},
+        y:{grid:{color:'#f0e8e8'},ticks:{font:{size:10},stepSize:1},beginAtZero:true}}}});
+}
+function renderCharts(){
+  const recs=filteredByRange();
+  makeLineChart('chartHR','wrapHR',recs.filter(r=>r.hr).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.hr)})),'lpm','#C0707A',null,null);
+  makeLineChart('chartTemp','wrapTemp',recs.filter(r=>r.temp).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.temp)})),'°C','#D4A850',35,40);
+  makeLineChart('chartO2','wrapO2',recs.filter(r=>r.o2).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.o2)})),'%','#7A9E7E',85,100);
+  makeLineChart('chartBilis','wrapBilis',recs.filter(r=>r.bilis).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.bilis)})),'ml','#A07860',null,null);
+  const byDay={};
+  recs.filter(r=>r.evac).forEach(r=>{const d=r.datetime.slice(0,10);byDay[d]=(byDay[d]||0)+parseFloat(r.evac);});
+  const days=Object.keys(byDay).sort();
+  makeBarChart('chartEvac','wrapEvac',
+    days.map(d=>new Intl.DateTimeFormat('es-MX',{month:'short',day:'numeric'}).format(new Date(d+'T12:00:00'))),
+    days.map(d=>byDay[d]),'#6A7EA0');
+}
+
+/* ══ TOAST ══ */
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+/* ══ INIT ══ */
+(async function(){
+  const to=new Date(),from=new Date();
+  from.setDate(from.getDate()-6);
+  document.getElementById('chartFrom').value=from.toISOString().slice(0,10);
+  document.getElementById('chartTo').value=to.toISOString().slice(0,10);
+  await loadRecords();
+  // Try to flush any pending offline records
+  if(isOnline) flushPendingQueue();
+})();
+</script>
+</body>
+</html>
