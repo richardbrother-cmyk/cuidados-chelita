@@ -681,49 +681,123 @@ async function exportPDF(){
     const now=new Intl.DateTimeFormat('es-MX',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date());
     doc.text('Generado: '+now,PW-MR,20,{align:'right'});
     doc.setFontSize(9); doc.text('Total: '+records.length+' registros',PW-MR,26,{align:'right'});
-    let y=38;
-    const SL={good:'Bien',fair:'Regular',poor:'Delicado'};
-    const SC={good:[56,142,60],fair:[213,155,30],poor:[192,112,122]};
-    for(const r of records){
-      const vitals=[];
-      if(r.bp)           vitals.push('PA: '+r.bp);
-      if(r.hr)           vitals.push('FC: '+r.hr+' lpm');
-      if(r.temp)         vitals.push('Temp: '+r.temp+'C');
-      if(r.o2)           vitals.push('SpO2: '+r.o2+'%');
-      if(r.bilis)        vitals.push('Bilis: '+r.bilis+' ml');
-      if(r.evac)         vitals.push('Evacuac: '+r.evac);
-      if(r.consistencia) vitals.push('Consist: '+r.consistencia);
-      if(r.colorHeces)   vitals.push('Color: '+r.colorHeces);
-      const vLine=doc.splitTextToSize(vitals.join('  |  '),TW-4);
-      const nLines=r.notes?doc.splitTextToSize(r.notes,TW-4):[];
-      const blockH=11+vLine.length*4.5+(nLines.length?nLines.length*3.8+3:0)+5;
-      if(y+blockH>285){doc.addPage();y=14;}
-      doc.setFillColor(253,248,246); doc.roundedRect(ML,y,TW,blockH-3,2,2,'F');
-      const c=SC[r.status]||SC.fair;
-      doc.setFillColor(...c); doc.roundedRect(ML,y,3,blockH-3,1,1,'F');
-      doc.setTextColor(107,76,59); doc.setFont('helvetica','bold'); doc.setFontSize(9);
-      doc.text(r.caregiver,ML+6,y+5);
-      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(122,106,106);
-      doc.text(fmtDT(r.datetime),ML+6,y+9.5);
-      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...c);
-      doc.text(SL[r.status]||'Regular',PW-MR,y+5,{align:'right'});
-      if(vitals.length){
-        doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(58,46,46);
-        doc.text(vLine,ML+4,y+14); y+=vLine.length*4.5;
-      } else {y+=4;}
-      if(r.notes){
-        y+=3; doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(122,106,106);
-        doc.text(nLines,ML+4,y+11); y+=nLines.length*3.8+11;
-      } else {y+=11;}
-      y+=6;
+
+    // ── TABLE SETUP ──
+    // Use landscape for more columns
+    const docL=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    const LW=297, LML=10, LMR=10, LTW=LW-LML-LMR;
+
+    // Header on landscape page
+    docL.setFillColor(192,112,122); docL.rect(0,0,LW,24,'F');
+    docL.setTextColor(255,255,255);
+    docL.setFont('helvetica','bold'); docL.setFontSize(16);
+    docL.text('Cuidados Chelita v1 — Bitácora de Signos Vitales',LML,11);
+    docL.setFont('helvetica','normal'); docL.setFontSize(9);
+    docL.text('Generado: '+now,LW-LMR,11,{align:'right'});
+    docL.setFontSize(8); docL.text('Total: '+records.length+' registros',LW-LMR,18,{align:'right'});
+
+    // Column definitions: label, width, accessor
+    const COLS=[
+      {h:'Fecha / Hora',      w:32, fn:r=>new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(r.datetime))},
+      {h:'Cuidador',          w:22, fn:r=>r.caregiver},
+      {h:'Estado',            w:18, fn:r=>({good:'Bien',fair:'Regular',poor:'Delicado'}[r.status]||'—')},
+      {h:'Presión',           w:18, fn:r=>r.bp||'—'},
+      {h:'FC (lpm)',          w:16, fn:r=>r.hr||'—'},
+      {h:'Temp °C',           w:15, fn:r=>r.temp||'—'},
+      {h:'SpO₂ %',           w:14, fn:r=>r.o2||'—'},
+      {h:'Bilis (ml)',        w:18, fn:r=>r.bilis||'—'},
+      {h:'Evacuac.',          w:16, fn:r=>r.evac||'—'},
+      {h:'Consistencia',      w:24, fn:r=>r.consistencia||'—'},
+      {h:'Color heces',       w:22, fn:r=>r.colorHeces||'—'},
+      {h:'Observaciones',     w:62, fn:r=>r.notes||''},
+    ];
+
+    const ROW_H=7;   // row height mm
+    const HEAD_H=9;  // header row height
+    let ty=30;       // current y
+
+    function drawTableHeader(doc,y){
+      let x=LML;
+      doc.setFillColor(107,76,59);
+      COLS.forEach(c=>{doc.rect(x,y,c.w,HEAD_H,'F');x+=c.w;});
+      doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(7);
+      x=LML;
+      COLS.forEach(c=>{
+        doc.text(c.h,x+c.w/2,y+5.8,{align:'center',maxWidth:c.w-2});
+        x+=c.w;
+      });
+      return y+HEAD_H;
     }
-    const pc=doc.internal.getNumberOfPages();
+
+    const SCC={good:[232,245,233],fair:[255,248,225],poor:[255,235,238]};
+    const SCT={good:[56,142,60],fair:[160,100,20],poor:[180,40,40]};
+
+    ty=drawTableHeader(docL,ty);
+
+    const sorted=[...records].reverse(); // oldest first
+    sorted.forEach((r,idx)=>{
+      // Check page break — estimate if notes wrap
+      const notesText=r.notes||'';
+      const noteLines=docL.splitTextToSize(notesText,60).length;
+      const rh=Math.max(ROW_H, noteLines*3.5+2);
+      if(ty+rh>200){
+        docL.addPage();
+        ty=10;
+        ty=drawTableHeader(docL,ty);
+      }
+
+      // Row background
+      const bg=idx%2===0?[253,248,246]:[255,255,255];
+      const sbg=SCC[r.status]||bg;
+      let x=LML;
+      COLS.forEach((c,ci)=>{
+        const fill=ci===2?sbg:bg;
+        docL.setFillColor(...fill);
+        docL.rect(x,ty,c.w,rh,'F');
+        x+=c.w;
+      });
+
+      // Cell borders
+      x=LML;
+      docL.setDrawColor(232,220,220); docL.setLineWidth(0.2);
+      COLS.forEach(c=>{docL.rect(x,ty,c.w,rh,'S');x+=c.w;});
+
+      // Cell text
+      x=LML;
+      COLS.forEach((c,ci)=>{
+        const val=c.fn(r);
+        if(ci===2){
+          docL.setTextColor(...(SCT[r.status]||[58,46,46]));
+          docL.setFont('helvetica','bold');
+        } else {
+          docL.setTextColor(58,46,46);
+          docL.setFont('helvetica','normal');
+        }
+        docL.setFontSize(7);
+        // Center numeric/short cols, left-align text cols
+        const isCenter=ci<=8;
+        if(isCenter){
+          docL.text(String(val),x+c.w/2,ty+rh/2+1.5,{align:'center',maxWidth:c.w-2});
+        } else {
+          const wrapped=docL.splitTextToSize(String(val),c.w-3);
+          docL.text(wrapped,x+2,ty+3.5);
+        }
+        x+=c.w;
+      });
+
+      ty+=rh;
+    });
+
+    // Footer on all pages
+    const pc=docL.internal.getNumberOfPages();
     for(let i=1;i<=pc;i++){
-      doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(180,150,150);
-      doc.text('Cuidados Chelita v1',ML,292);
-      doc.text('Pag '+i+' de '+pc,PW-MR,292,{align:'right'});
+      docL.setPage(i);
+      docL.setFont('helvetica','normal'); docL.setFontSize(7); docL.setTextColor(180,150,150);
+      docL.text('Cuidados Chelita v1',LML,207);
+      docL.text('Pág '+i+' de '+pc,LW-LMR,207,{align:'right'});
     }
-    doc.save('cuidados-chelita-'+new Date().toISOString().slice(0,10)+'.pdf');
+
+    docL.save('cuidados-chelita-'+new Date().toISOString().slice(0,10)+'.pdf');
     showToast('✅ PDF descargado');
   } catch(err){
     showToast('❌ Error: '+err.message);
