@@ -1,0 +1,26 @@
+{
+  "name": "Cuidados Chelita v1",
+  "short_name": "Chelita v1",
+  "description": "Bitácora de signos vitales de Chelita",
+  "start_url": "/cuidados-chelita/",
+  "scope": "/cuidados-chelita/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAF6F0",
+  "theme_color": "#C0707A",
+  "lang": "es-MX",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
