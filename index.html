@@ -187,6 +187,19 @@ textarea.field-input{resize:vertical;min-height:60px;}
 .btn-confirm-no{padding:9px 22px;border-radius:9px;border:1.5px solid var(--border);background:white;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text-soft);cursor:pointer;}
 .btn-confirm-yes{padding:9px 22px;border-radius:9px;border:none;background:#C62828;color:white;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;}
 
+/* MALESTARES TOGGLES */
+.malestares-section{background:white;border-radius:14px;padding:16px 18px;border:1px solid var(--border);box-shadow:0 2px 12px var(--shadow);margin-top:2px;}
+.malestares-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.malestar-toggle{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--warm-white);cursor:pointer;transition:all 0.2s;user-select:none;}
+.malestar-toggle:hover{border-color:var(--rose-light);}
+.malestar-toggle.active{background:#FFEBEE;border-color:#EF9A9A;}
+.malestar-label{font-size:12px;font-weight:500;color:var(--text);display:flex;align-items:center;gap:6px;}
+.malestar-toggle.active .malestar-label{color:#C62828;font-weight:600;}
+.toggle-pill{width:36px;height:20px;border-radius:10px;background:var(--border);position:relative;transition:background 0.2s;flex-shrink:0;}
+.toggle-pill::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:white;transition:transform 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);}
+.malestar-toggle.active .toggle-pill{background:#E57373;}
+.malestar-toggle.active .toggle-pill::after{transform:translateX(16px);}
+
 /* NO DATA */
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--brown);color:white;padding:10px 20px;border-radius:50px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,0.2);transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);z-index:999;pointer-events:none;white-space:nowrap;}
 .toast.show{transform:translateX(-50%) translateY(0);}
@@ -284,7 +297,44 @@ textarea.field-input{resize:vertical;min-height:60px;}
         </div>
         <button class="btn-submit" id="btnSave" onclick="saveRecord()"><span>💾</span> Guardar registro</button>
       </div>
-    </div>
+
+      <!-- MALESTARES -->
+      <div class="malestares-section">
+        <div class="section-title"><span>🤒</span> Malestares</div>
+        <div class="malestares-grid" id="malestares-grid">
+          <div class="malestar-toggle" data-key="dolor" onclick="toggleMalestar(this)">
+            <span class="malestar-label">😣 Dolor</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="fatiga" onclick="toggleMalestar(this)">
+            <span class="malestar-label">😴 Fatiga</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="nauseas" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🤢 Náuseas</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="mareos" onclick="toggleMalestar(this)">
+            <span class="malestar-label">💫 Mareos</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="diarrea" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🚽 Diarrea</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="vomito" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🤮 Vómito</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="dif_hablar" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🗣️ Dif. para hablar</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="dolor_evacuar" onclick="toggleMalestar(this)">
+            <span class="malestar-label">😖 Dolor al evacuar</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="dolor_estomago" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🫃 Dolor boca estómago</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="dolor_intestinal" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🫁 Dolor intestinal</span><div class="toggle-pill"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- end panel-left -->
     <div class="panel-right">
       <div class="section-title"><span>📊</span> Últimos valores</div>
       <div class="stats-grid">
@@ -527,6 +577,7 @@ async function loadRecords(){
       temp:r.temp||'', o2:r.o2||'', bilis:r.bilis||'',
       evac:r.evac||'', consistencia:r.consistencia||'',
       colorHeces:r.color_heces||'', notes:r.notes||'',
+      malestares:r.malestares||null,
       datetime:r.datetime,
     }));
     saveCachedRecords(records);
@@ -538,6 +589,41 @@ async function loadRecords(){
   }
   renderLog();
   updateStats();
+}
+
+/* ══ MALESTARES ══ */
+const MALESTARES_LABELS={
+  dolor:'Dolor', fatiga:'Fatiga', nauseas:'Náuseas', mareos:'Mareos',
+  diarrea:'Diarrea', vomito:'Vómito', dif_hablar:'Dif. para hablar',
+  dolor_evacuar:'Dolor al evacuar', dolor_estomago:'Dolor boca estómago',
+  dolor_intestinal:'Dolor intestinal'
+};
+let activeMalestares={};
+
+function toggleMalestar(el){
+  const key=el.dataset.key;
+  const isActive=el.classList.contains('active');
+  el.classList.toggle('active',!isActive);
+  if(!isActive) activeMalestares[key]=true;
+  else delete activeMalestares[key];
+}
+function resetMalestares(){
+  activeMalestares={};
+  document.querySelectorAll('.malestar-toggle').forEach(el=>el.classList.remove('active'));
+}
+function setMalestares(jsonStr){
+  resetMalestares();
+  if(!jsonStr) return;
+  try{
+    const obj=JSON.parse(jsonStr);
+    Object.keys(obj).forEach(k=>{
+      if(obj[k]){
+        activeMalestares[k]=true;
+        const el=document.querySelector(`.malestar-toggle[data-key="${k}"]`);
+        if(el) el.classList.add('active');
+      }
+    });
+  }catch(e){}
 }
 
 /* ══ SAVE ══ */
@@ -561,6 +647,7 @@ async function saveRecord(){
     bilis:bilis||null, evac:evac||null,
     consistencia:cons||null, color_heces:col||null,
     notes:notes||null,
+    malestares:Object.keys(activeMalestares).length?JSON.stringify(activeMalestares):null,
     datetime:new Date().toISOString(),
   };
 
@@ -599,6 +686,7 @@ function clearForm(){
   document.getElementById('fColor').value='';
   activeStatus='';
   document.querySelectorAll('.status-chip').forEach(c=>c.classList.remove('active'));
+  resetMalestares();
 }
 
 /* ══ STATS ══ */
@@ -655,6 +743,18 @@ function renderLog(){
       </div>
       <div class="log-vitals">${v.join('')}</div>
       ${r.notes?`<div class="log-notes">💬 ${r.notes}</div>`:''}
+      ${(()=>{
+        if(!r.malestares) return '';
+        try{
+          const m=JSON.parse(r.malestares);
+          const activos=Object.keys(m).filter(k=>m[k]).map(k=>MALESTARES_LABELS[k]||k);
+          if(!activos.length) return '';
+          return `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:5px;">
+            <span style="font-size:10px;font-weight:600;color:var(--text-soft);text-transform:uppercase;letter-spacing:0.4px;align-self:center;">🤒 Malestares:</span>
+            ${activos.map(a=>`<span style="background:#FFEBEE;color:#C62828;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;">${a}</span>`).join('')}
+          </div>`;
+        }catch(e){return '';}
+      })()}
       <div class="log-actions">
         <button class="btn-edit" onclick="openEditModal(${r.id})">✏️ Editar</button>
         <button class="btn-delete" onclick="openConfirm(${r.id})">🗑️ Eliminar</button>
@@ -709,7 +809,11 @@ async function exportPDF(){
       {h:'Evacuac.',          w:16, fn:r=>r.evac||'—'},
       {h:'Consistencia',      w:24, fn:r=>r.consistencia||'—'},
       {h:'Color heces',       w:22, fn:r=>r.colorHeces||'—'},
-      {h:'Observaciones',     w:62, fn:r=>r.notes||''},
+      {h:'Observaciones',     w:46, fn:r=>r.notes||''},
+      {h:'Malestares',        w:46, fn:r=>{
+        if(!r.malestares) return '—';
+        try{const m=JSON.parse(r.malestares);return Object.keys(m).filter(k=>m[k]).map(k=>MALESTARES_LABELS[k]||k).join(', ')||'—';}catch{return '—';}
+      }},
     ];
 
     const ROW_H=7;   // row height mm
@@ -924,6 +1028,8 @@ function openEditModal(id){
   document.querySelectorAll('#editModal .status-chip').forEach(c=>{
     c.classList.toggle('active', c.classList.contains(editingStatus));
   });
+  // set malestares
+  setMalestares(r.malestares||null);
   document.getElementById('editModal').classList.add('show');
 }
 function closeEditModal(){
@@ -948,6 +1054,7 @@ async function saveEdit(){
     color_heces:document.getElementById('eColor').value||null,
     notes:document.getElementById('eNotes').value.trim()||null,
     status:editingStatus,
+    malestares:Object.keys(activeMalestares).length?JSON.stringify(activeMalestares):null,
   };
   const{error}=await sb.from('registros').update(payload).eq('id',String(editingId));
   if(error){showToast('❌ Error al editar: '+error.message);return;}
