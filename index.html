@@ -551,7 +551,7 @@ async function saveRecord(){
   const cons=document.getElementById('fConsistencia').value;
   const col=document.getElementById('fColor').value;
   const notes=document.getElementById('fNotes').value.trim();
-  if(!bp&&!hr&&!temp&&!o2){showToast('⚠️ Captura al menos un signo vital');return;}
+  if(!bp&&!hr&&!temp&&!o2&&!bilis&&!evac&&!cons&&!col&&!notes){showToast('⚠️ Captura al menos un dato');return;}
 
   const payload={
     caregiver:CAREGIVERS[activeCaregiver].name,
