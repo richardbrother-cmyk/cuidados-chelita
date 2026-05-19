@@ -796,25 +796,32 @@ async function exportPDF(){
     docL.text('Generado: '+now,LW-LMR,11,{align:'right'});
     docL.setFontSize(8); docL.text('Total: '+records.length+' registros',LW-LMR,18,{align:'right'});
 
-    // Column definitions: label, width, accessor
-    const COLS=[
-      {h:'Fecha / Hora',      w:32, fn:r=>new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(r.datetime))},
-      {h:'Cuidador',          w:22, fn:r=>r.caregiver},
-      {h:'Estado',            w:18, fn:r=>({good:'Bien',fair:'Regular',poor:'Delicado'}[r.status]||'—')},
-      {h:'Presión',           w:18, fn:r=>r.bp||'—'},
-      {h:'FC (lpm)',          w:16, fn:r=>r.hr||'—'},
-      {h:'Temp °C',           w:15, fn:r=>r.temp||'—'},
-      {h:'SpO₂ %',           w:14, fn:r=>r.o2||'—'},
-      {h:'Bilis (ml)',        w:18, fn:r=>r.bilis||'—'},
-      {h:'Evacuac.',          w:16, fn:r=>r.evac||'—'},
-      {h:'Consistencia',      w:24, fn:r=>r.consistencia||'—'},
-      {h:'Color heces',       w:22, fn:r=>r.colorHeces||'—'},
-      {h:'Observaciones',     w:46, fn:r=>r.notes||''},
-      {h:'Malestares',        w:46, fn:r=>{
+    // Column definitions: label, relative weight, accessor
+    const COLS_DEF=[
+      {h:'Fecha / Hora',  w:32, fn:r=>new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(r.datetime))},
+      {h:'Cuidador',      w:20, fn:r=>r.caregiver},
+      {h:'Estado',        w:16, fn:r=>({good:'Bien',fair:'Regular',poor:'Delicado'}[r.status]||'—')},
+      {h:'Presión',       w:16, fn:r=>r.bp||'—'},
+      {h:'FC lpm',        w:13, fn:r=>r.hr||'—'},
+      {h:'Temp °C',       w:13, fn:r=>r.temp||'—'},
+      {h:'SpO₂ %',       w:13, fn:r=>r.o2||'—'},
+      {h:'Bilis ml',      w:13, fn:r=>r.bilis||'—'},
+      {h:'Evacuac.',      w:13, fn:r=>r.evac||'—'},
+      {h:'Consistencia',  w:20, fn:r=>r.consistencia||'—'},
+      {h:'Color heces',   w:20, fn:r=>r.colorHeces||'—'},
+      {h:'Observaciones', w:40, fn:r=>r.notes||''},
+      {h:'Malestares',    w:40, fn:r=>{
         if(!r.malestares) return '—';
         try{const m=JSON.parse(r.malestares);return Object.keys(m).filter(k=>m[k]).map(k=>MALESTARES_LABELS[k]||k).join(', ')||'—';}catch{return '—';}
       }},
     ];
+
+    // Auto-scale columns to fit exactly within page width
+    const totalRaw = COLS_DEF.reduce((s,c)=>s+c.w, 0);
+    const COLS = COLS_DEF.map(c=>({...c, w: parseFloat(((c.w / totalRaw) * LTW).toFixed(2))}));
+    // Correct any rounding drift on last column
+    const usedW = COLS.slice(0,-1).reduce((s,c)=>s+c.w, 0);
+    COLS[COLS.length-1].w = parseFloat((LTW - usedW).toFixed(2));
 
     const ROW_H=7;   // row height mm
     const HEAD_H=9;  // header row height
@@ -901,8 +908,51 @@ async function exportPDF(){
       docL.text('Pág '+i+' de '+pc,LW-LMR,207,{align:'right'});
     }
 
-    docL.save('cuidados-chelita-'+new Date().toISOString().slice(0,10)+'.pdf');
-    showToast('✅ PDF descargado');
+    const filename='cuidados-chelita-'+new Date().toISOString().slice(0,10)+'.pdf';
+    const isCapacitor = window.Capacitor !== undefined;
+
+    // Convertir arraybuffer a base64 de forma segura
+    function arrayBufferToBase64(buffer){
+      let binary='';
+      const bytes=new Uint8Array(buffer);
+      const len=bytes.byteLength;
+      for(let i=0;i<len;i++) binary+=String.fromCharCode(bytes[i]);
+      return window.btoa(binary);
+    }
+
+    if(isCapacitor){
+      try{
+        const FS = window.Capacitor.Plugins.Filesystem;
+        const SH = window.Capacitor.Plugins.Share;
+        if(!FS || !SH) throw new Error('plugins no disponibles');
+
+        // Generar PDF como arraybuffer y convertir a base64 manualmente
+        const pdfArrayBuffer = docL.output('arraybuffer');
+        const base64clean = arrayBufferToBase64(pdfArrayBuffer);
+
+        // Escribir en cache
+        const write = await FS.writeFile({
+          path: filename,
+          data: base64clean,
+          directory: 'CACHE',
+        });
+
+        // Menú nativo de Android
+        await SH.share({
+          title: 'Bitácora Chelita',
+          url: write.uri,
+          dialogTitle: 'Guardar o compartir PDF',
+        });
+        showToast('✅ PDF listo');
+
+      } catch(e){
+        console.error('PDF Capacitor error:', e);
+        showToast('❌ Error: '+e.message);
+      }
+    } else {
+      docL.save(filename);
+      showToast('✅ PDF descargado');
+    }
   } catch(err){
     showToast('❌ Error: '+err.message);
   } finally{
