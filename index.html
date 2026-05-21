@@ -200,6 +200,21 @@ textarea.field-input{resize:vertical;min-height:60px;}
 .malestar-toggle.active .toggle-pill{background:#E57373;}
 .malestar-toggle.active .toggle-pill::after{transform:translateX(16px);}
 
+/* FULLSCREEN CHART MODAL */
+.chart-fullscreen-overlay{position:fixed;inset:0;background:rgba(30,20,20,0.88);z-index:950;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity 0.25s;}
+.chart-fullscreen-overlay.show{opacity:1;pointer-events:all;}
+.chart-fullscreen-box{background:white;border-radius:18px;padding:22px 24px;width:100%;max-width:960px;max-height:90vh;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,0.4);}
+.chart-fullscreen-header{display:flex;justify-content:space-between;align-items:center;}
+.chart-fullscreen-title{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--brown);}
+.btn-close-fs{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-soft);line-height:1;padding:4px;}
+.btn-close-fs:hover{color:var(--rose);}
+.chart-fullscreen-wrap{position:relative;flex:1;min-height:320px;max-height:60vh;}
+
+/* chart-card clickable hint */
+.chart-card{cursor:pointer;transition:box-shadow 0.2s,transform 0.15s;}
+.chart-card:hover{box-shadow:0 6px 24px rgba(192,112,122,0.22);transform:translateY(-2px);}
+.chart-card-hint{font-size:10px;color:var(--text-soft);text-align:right;margin-top:4px;opacity:0.7;}
+
 /* NO DATA */
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--brown);color:white;padding:10px 20px;border-radius:50px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,0.2);transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);z-index:999;pointer-events:none;white-space:nowrap;}
 .toast.show{transform:translateX(-50%) translateY(0);}
@@ -401,6 +416,19 @@ textarea.field-input{resize:vertical;min-height:60px;}
       <div class="chart-card"><div class="chart-title"><span>💛</span> Bilis (ml)</div><div class="chart-wrap" id="wrapBilis"><canvas id="chartBilis"></canvas></div></div>
       <div class="chart-card full"><div class="chart-title"><span>🔢</span> Evacuaciones por día</div><div class="chart-wrap tall" id="wrapEvac"><canvas id="chartEvac"></canvas></div></div>
       <div class="chart-card full"><div class="chart-title"><span>❤️</span> Presión arterial — Sistólica / Diastólica (mmHg)</div><div class="chart-wrap tall" id="wrapBP"><canvas id="chartBP"></canvas></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- FULLSCREEN CHART -->
+<div class="chart-fullscreen-overlay" id="fsOverlay">
+  <div class="chart-fullscreen-box">
+    <div class="chart-fullscreen-header">
+      <div class="chart-fullscreen-title" id="fsTitle"></div>
+      <button class="btn-close-fs" onclick="closeFullscreen()">✕</button>
+    </div>
+    <div class="chart-fullscreen-wrap">
+      <canvas id="fsCanvas"></canvas>
     </div>
   </div>
 </div>
@@ -995,34 +1023,168 @@ function shortLbl(dt){
 }
 function destroyChart(id){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}}
 function noDataMsg(wrapId){document.getElementById(wrapId).innerHTML='<div class="no-data"><span style="font-size:26px">📭</span>Sin datos en el rango</div>';}
-function makeLineChart(cid,wid,pts,label,color,yMin,yMax){
+
+// Calculate Y axis range with padding so values don't touch edges
+function yRange(values, fixedMin, fixedMax){
+  const clean = values.filter(v=>v!==null&&!isNaN(v));
+  if(!clean.length) return {min:undefined,max:undefined};
+  const dataMin = Math.min(...clean);
+  const dataMax = Math.max(...clean);
+  const spread  = dataMax - dataMin || 1;
+  const pad     = Math.max(spread * 0.20, 2); // at least 20% padding or 2 units
+  const min = fixedMin !== null ? Math.min(fixedMin, dataMin - pad) : dataMin - pad;
+  const max = fixedMax !== null ? Math.max(fixedMax, dataMax + pad) : dataMax + pad;
+  return { min: parseFloat(min.toFixed(1)), max: parseFloat(max.toFixed(1)) };
+}
+
+// Common chart options factory
+function lineOptions(ymin, ymax, showLegend=false){
+  return {
+    responsive:true, maintainAspectRatio:false,
+    layout:{padding:{left:8, right:8, top:10, bottom:4}},
+    plugins:{
+      legend:{display:showLegend, position:'top', labels:{font:{size:11}, usePointStyle:true, boxWidth:8}},
+      tooltip:{
+        backgroundColor:'rgba(107,76,59,0.92)',
+        titleFont:{size:11}, bodyFont:{size:12},
+        padding:10, cornerRadius:8,
+      }
+    },
+    scales:{
+      x:{
+        grid:{color:'#f5eaea', drawBorder:false},
+        ticks:{font:{size:10}, maxRotation:40, maxTicksLimit:12, color:'#7A6A6A'},
+        border:{display:false},
+      },
+      y:{
+        grid:{color:'#f5eaea', drawBorder:false},
+        ticks:{font:{size:10}, color:'#7A6A6A', padding:6},
+        border:{display:false},
+        min: ymin, max: ymax,
+      }
+    },
+    elements:{line:{tension:0.4}},
+  };
+}
+
+// Store chart configs for fullscreen re-render
+const chartConfigs = {};
+
+function makeLineChart(cid, wid, pts, label, color, fixedMin, fixedMax){
   destroyChart(cid);
   if(!pts.length){noDataMsg(wid);return;}
   document.getElementById(wid).innerHTML='<canvas id="'+cid+'"></canvas>';
+  const vals = pts.map(p=>p.val);
+  const {min,max} = yRange(vals, fixedMin, fixedMax);
+  const cfg = {
+    type:'line',
+    data:{
+      labels: pts.map(p=>p.lbl),
+      datasets:[{
+        label, data:vals,
+        borderColor:color, backgroundColor:color+'22',
+        tension:0.4, pointRadius:4, pointHoverRadius:7,
+        fill:true, borderWidth:2.5,
+        pointBackgroundColor:color,
+        pointBorderColor:'white', pointBorderWidth:1.5,
+      }]
+    },
+    options: lineOptions(min, max, false),
+  };
+  chartConfigs[cid]={cfg, title:label, color};
   const ctx=document.getElementById(cid).getContext('2d');
-  chartInstances[cid]=new Chart(ctx,{type:'line',
-    data:{labels:pts.map(p=>p.lbl),datasets:[{label,data:pts.map(p=>p.val),borderColor:color,backgroundColor:color+'28',tension:0.35,pointRadius:4,pointHoverRadius:6,fill:true,borderWidth:2}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{grid:{color:'#f0e8e8'},ticks:{font:{size:10},maxRotation:45,maxTicksLimit:10}},
-        y:{grid:{color:'#f0e8e8'},ticks:{font:{size:10}},min:yMin??undefined,max:yMax??undefined}}}});
+  chartInstances[cid]=new Chart(ctx, cfg);
+  // Add fullscreen hint and click handler
+  const card = document.getElementById(wid).closest('.chart-card');
+  if(card && !card.dataset.fsReady){
+    card.dataset.fsReady='1';
+    if(!card.querySelector('.chart-card-hint')){
+      const hint=document.createElement('div');
+      hint.className='chart-card-hint'; hint.textContent='Toca para pantalla completa';
+      card.appendChild(hint);
+    }
+    card.addEventListener('click', ()=>openFullscreen(cid));
+  }
 }
-function makeBarChart(cid,wid,labels,values,color){
+
+function makeBarChart(cid, wid, labels, values, color){
   destroyChart(cid);
   if(!values.some(v=>v>0)){noDataMsg(wid);return;}
   document.getElementById(wid).innerHTML='<canvas id="'+cid+'"></canvas>';
+  const {min,max} = yRange(values, 0, null);
+  const cfg = {
+    type:'bar',
+    data:{labels, datasets:[{data:values, backgroundColor:color+'99', borderColor:color, borderWidth:1.5, borderRadius:6}]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{left:8, right:8, top:10, bottom:4}},
+      plugins:{legend:{display:false}, tooltip:{backgroundColor:'rgba(107,76,59,0.92)', padding:10, cornerRadius:8}},
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:10}, maxRotation:40, color:'#7A6A6A'}, border:{display:false}},
+        y:{grid:{color:'#f5eaea', drawBorder:false}, ticks:{font:{size:10}, color:'#7A6A6A', stepSize:1, padding:6}, border:{display:false}, min:0, max:max}
+      }
+    }
+  };
+  chartConfigs[cid]={cfg, title:'Evacuaciones', color};
   const ctx=document.getElementById(cid).getContext('2d');
-  chartInstances[cid]=new Chart(ctx,{type:'bar',
-    data:{labels,datasets:[{data:values,backgroundColor:color+'99',borderColor:color,borderWidth:1.5,borderRadius:5}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45}},
-        y:{grid:{color:'#f0e8e8'},ticks:{font:{size:10},stepSize:1},beginAtZero:true}}}});
+  chartInstances[cid]=new Chart(ctx, cfg);
+  const card=document.getElementById(wid).closest('.chart-card');
+  if(card && !card.dataset.fsReady){
+    card.dataset.fsReady='1';
+    if(!card.querySelector('.chart-card-hint')){
+      const hint=document.createElement('div');
+      hint.className='chart-card-hint'; hint.textContent='Toca para pantalla completa';
+      card.appendChild(hint);
+    }
+    card.addEventListener('click', ()=>openFullscreen(cid));
+  }
 }
+
+/* ── FULLSCREEN ── */
+let fsChartInstance = null;
+function openFullscreen(cid){
+  const conf = chartConfigs[cid];
+  if(!conf) return;
+  document.getElementById('fsTitle').textContent = conf.title;
+  if(fsChartInstance){fsChartInstance.destroy(); fsChartInstance=null;}
+  const canvas = document.getElementById('fsCanvas');
+  const ctx = canvas.getContext('2d');
+  // Deep clone config so fullscreen doesn't mutate the original
+  const fsCfg = JSON.parse(JSON.stringify(conf.cfg));
+  // Bigger fonts for fullscreen
+  if(fsCfg.options?.scales?.x?.ticks) fsCfg.options.scales.x.ticks.font={size:12};
+  if(fsCfg.options?.scales?.y?.ticks) fsCfg.options.scales.y.ticks.font={size:12};
+  if(fsCfg.options?.plugins?.legend?.labels) fsCfg.options.plugins.legend.labels.font={size:13};
+  fsChartInstance = new Chart(ctx, fsCfg);
+  document.getElementById('fsOverlay').classList.add('show');
+}
+function closeFullscreen(){
+  document.getElementById('fsOverlay').classList.remove('show');
+  if(fsChartInstance){fsChartInstance.destroy(); fsChartInstance=null;}
+}
+document.getElementById('fsOverlay').addEventListener('click', e=>{
+  if(e.target===e.currentTarget) closeFullscreen();
+});
+
 function renderCharts(){
   const recs=filteredByRange();
-  makeLineChart('chartHR','wrapHR',recs.filter(r=>r.hr).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.hr)})),'lpm','#C0707A',null,null);
-  makeLineChart('chartTemp','wrapTemp',recs.filter(r=>r.temp).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.temp)})),'°C','#D4A850',35,40);
-  makeLineChart('chartO2','wrapO2',recs.filter(r=>r.o2).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.o2)})),'%','#7A9E7E',85,100);
-  makeLineChart('chartBilis','wrapBilis',recs.filter(r=>r.bilis).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.bilis)})),'ml','#A07860',null,null);
+
+  makeLineChart('chartHR','wrapHR',
+    recs.filter(r=>r.hr).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.hr)})),
+    'Frec. Cardíaca (lpm)','#C0707A', null, null);
+
+  makeLineChart('chartTemp','wrapTemp',
+    recs.filter(r=>r.temp).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.temp)})),
+    'Temperatura (°C)','#D4A850', 35, 40);
+
+  makeLineChart('chartO2','wrapO2',
+    recs.filter(r=>r.o2).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.o2)})),
+    'Saturación O₂ (%)','#7A9E7E', 85, 100);
+
+  makeLineChart('chartBilis','wrapBilis',
+    recs.filter(r=>r.bilis).map(r=>({lbl:shortLbl(r.datetime),val:parseFloat(r.bilis)})),
+    'Bilis (ml)','#A07860', null, null);
+
   const byDay={};
   recs.filter(r=>r.evac).forEach(r=>{const d=r.datetime.slice(0,10);byDay[d]=(byDay[d]||0)+parseFloat(r.evac);});
   const days=Object.keys(byDay).sort();
@@ -1030,30 +1192,42 @@ function renderCharts(){
     days.map(d=>new Intl.DateTimeFormat('es-MX',{month:'short',day:'numeric'}).format(new Date(d+'T12:00:00'))),
     days.map(d=>byDay[d]),'#6A7EA0');
 
-  // Presión arterial — doble línea sistólica/diastólica
+  // Presión arterial doble línea
   destroyChart('chartBP');
   const bpRecs=recs.filter(r=>r.bp&&r.bp.includes('/'));
   if(!bpRecs.length){noDataMsg('wrapBP');} else {
     const bpLabels=bpRecs.map(r=>shortLbl(r.datetime));
     const sistolica=bpRecs.map(r=>parseFloat(r.bp.split('/')[0])||null);
     const diastolica=bpRecs.map(r=>parseFloat(r.bp.split('/')[1])||null);
+    const allBP=[...sistolica,...diastolica].filter(v=>v!==null&&!isNaN(v));
+    const {min:bpMin, max:bpMax}=yRange(allBP, 60, null);
     document.getElementById('wrapBP').innerHTML='<canvas id="chartBP"></canvas>';
     const ctx=document.getElementById('chartBP').getContext('2d');
-    chartInstances['chartBP']=new Chart(ctx,{type:'line',
+    const bpOpts = lineOptions(bpMin, bpMax, true);
+    bpOpts.scales.y.title={display:true,text:'mmHg',font:{size:10},color:'#7A6A6A'};
+    const bpCfg={type:'line',
       data:{labels:bpLabels,datasets:[
-        {label:'Sistólica',data:sistolica,borderColor:'#C0707A',backgroundColor:'#C0707A22',tension:0.35,pointRadius:4,pointHoverRadius:6,fill:false,borderWidth:2.5},
-        {label:'Diastólica',data:diastolica,borderColor:'#6A7EA0',backgroundColor:'#6A7EA022',tension:0.35,pointRadius:4,pointHoverRadius:6,fill:false,borderWidth:2,borderDash:[4,3]},
+        {label:'Sistólica',data:sistolica,borderColor:'#C0707A',backgroundColor:'#C0707A15',
+          tension:0.4,pointRadius:4,pointHoverRadius:7,fill:false,borderWidth:2.5,
+          pointBackgroundColor:'#C0707A',pointBorderColor:'white',pointBorderWidth:1.5},
+        {label:'Diastólica',data:diastolica,borderColor:'#6A7EA0',backgroundColor:'#6A7EA015',
+          tension:0.4,pointRadius:4,pointHoverRadius:7,fill:false,borderWidth:2,
+          borderDash:[5,3],pointBackgroundColor:'#6A7EA0',pointBorderColor:'white',pointBorderWidth:1.5},
       ]},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:true,position:'top',labels:{font:{size:11},usePointStyle:true,boxWidth:8}}},
-        scales:{
-          x:{grid:{color:'#f0e8e8'},ticks:{font:{size:10},maxRotation:45,maxTicksLimit:10}},
-          y:{grid:{color:'#f0e8e8'},ticks:{font:{size:10}},
-            min:60,
-            title:{display:true,text:'mmHg',font:{size:10},color:'#7A6A6A'}}
-        }
+      options:bpOpts,
+    };
+    chartConfigs['chartBP']={cfg:bpCfg, title:'Presión Arterial (mmHg)'};
+    chartInstances['chartBP']=new Chart(ctx, bpCfg);
+    const card=document.getElementById('wrapBP').closest('.chart-card');
+    if(card && !card.dataset.fsReady){
+      card.dataset.fsReady='1';
+      if(!card.querySelector('.chart-card-hint')){
+        const hint=document.createElement('div');
+        hint.className='chart-card-hint'; hint.textContent='Toca para pantalla completa';
+        card.appendChild(hint);
       }
-    });
+      card.addEventListener('click',()=>openFullscreen('chartBP'));
+    }
   }
 }
 
