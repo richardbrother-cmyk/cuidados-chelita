@@ -279,6 +279,21 @@ textarea.field-input{resize:vertical;min-height:60px;}
   <button class="caregiver-btn" onclick="selectCaregiver(1)"><div class="caregiver-avatar">MA</div>Mayte</button>
   <button class="caregiver-btn" onclick="selectCaregiver(2)"><div class="caregiver-avatar">JZ</div>Jazmin</button>
   <button class="caregiver-btn" onclick="selectCaregiver(3)"><div class="caregiver-avatar">JD</div>Juan David</button>
+
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span class="caregiver-label">⏰ Recordatorio:</span>
+    <select id="reminderSelect" class="field-input" style="padding:5px 10px;font-size:12px;border-radius:20px;width:auto;background:white;" onchange="changeReminder(this.value)">
+      <option value="0">Desactivado</option>
+      <option value="1">Cada 1 hora</option>
+      <option value="2">Cada 2 horas</option>
+      <option value="3">Cada 3 horas</option>
+      <option value="4" selected>Cada 4 horas</option>
+      <option value="6">Cada 6 horas</option>
+      <option value="8">Cada 8 horas</option>
+      <option value="12">Cada 12 horas</option>
+    </select>
+    <span id="reminderStatus" style="font-size:11px;color:var(--text-soft);"></span>
+  </div>
 </div>
 
 <div class="tabs">
@@ -790,6 +805,9 @@ async function saveRecord(){
     }
     showToast('✅ Registro guardado en la nube');
     await loadRecords();
+    // Disparar notificación a todos los cuidadores
+    const isDelicado = (activeStatus||'fair') === 'poor';
+    triggerNotification(isDelicado ? 'estado_delicado' : 'nuevo_registro');
   } else {
     // Save to pending queue
     const q=getPendingQueue();
@@ -1406,6 +1424,116 @@ async function confirmDelete(){
 document.getElementById('editModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeEditModal();});
 document.getElementById('confirmModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeConfirm();});
 
+/* ══ PUSH NOTIFICATIONS ══ */
+const SUPABASE_FUNCTIONS_URL = 'https://ouapoetjbcrpfbidhbgy.supabase.co/functions/v1';
+
+async function setupPushNotifications(){
+  if(!window.Capacitor) return;
+  try{
+    const { PushNotifications } = window.Capacitor.Plugins;
+    if(!PushNotifications) return;
+
+    // Request permission
+    const perm = await PushNotifications.requestPermissions();
+    if(perm.receive !== 'granted') return;
+
+    // Register with FCM
+    await PushNotifications.register();
+
+    // Get token and save to Supabase
+    PushNotifications.addListener('registration', async (token) => {
+      console.log('FCM Token:', token.value);
+      await saveDeviceToken(token.value);
+    });
+
+    // Handle foreground notifications
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      showToast('🔔 '+notification.title+': '+notification.body);
+    });
+
+    // Handle tap on notification
+    PushNotifications.addListener('pushNotificationActionPerformed', () => {
+      switchTab('bitacora', document.querySelectorAll('.tab-btn')[1]);
+    });
+
+  } catch(e){ console.warn('Push setup error:', e); }
+}
+
+async function saveDeviceToken(token){
+  try{
+    // Upsert token — update if exists, insert if new
+    await sb.from('device_tokens').upsert(
+      { caregiver: CAREGIVERS[activeCaregiver].name, token },
+      { onConflict: 'token' }
+    );
+  } catch(e){ console.warn('Token save error:', e); }
+}
+
+async function triggerNotification(type, extra={}){
+  try{
+    await fetch(SUPABASE_FUNCTIONS_URL+'/notificar', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91YXBvZXRqYmNycGZiaWRoYmd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MDg4NTIsImV4cCI6MjA5NDQ4NDg1Mn0.KOLzCHlJknhgm-wj1t9PZE8APdLcdt0dOaTsFh0WzwM'},
+      body: JSON.stringify({
+        type,
+        caregiver: CAREGIVERS[activeCaregiver].name,
+        ...extra
+      })
+    });
+  } catch(e){ console.warn('Notification error:', e); }
+}
+
+/* ══ REMINDER SETUP ══ */
+let reminderInterval = null;
+
+function changeReminder(hours){
+  const h = parseInt(hours);
+  setupReminder(h);
+  try{ localStorage.setItem('chelita_reminder', hours); }catch(e){}
+  const status = document.getElementById('reminderStatus');
+  if(h === 0){
+    status.textContent = '🔕 Desactivado';
+    showToast('🔕 Recordatorio desactivado');
+  } else {
+    // Calculate next reminder time
+    const next = new Date(Date.now() + h * 60 * 60 * 1000);
+    const nextStr = new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit'}).format(next);
+    status.textContent = `Próximo: ${nextStr}`;
+    showToast(`⏰ Recordatorio cada ${h} hora${h>1?'s':''}`);
+  }
+}
+
+function setupReminder(hours){
+  if(reminderInterval){ clearInterval(reminderInterval); reminderInterval=null; }
+  if(!hours || hours<=0) return;
+  reminderInterval = setInterval(()=>{
+    triggerNotification('recordatorio');
+    // Update next reminder display
+    const next = new Date(Date.now() + hours * 60 * 60 * 1000);
+    const nextStr = new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit'}).format(next);
+    const status = document.getElementById('reminderStatus');
+    if(status) status.textContent = `Próximo: ${nextStr}`;
+  }, hours * 60 * 60 * 1000);
+}
+
+function initReminder(){
+  // Restore saved preference
+  let saved = '4';
+  try{ saved = localStorage.getItem('chelita_reminder') || '4'; }catch(e){}
+  const select = document.getElementById('reminderSelect');
+  if(select) select.value = saved;
+  const h = parseInt(saved);
+  setupReminder(h);
+  const status = document.getElementById('reminderStatus');
+  if(status && h > 0){
+    const next = new Date(Date.now() + h * 60 * 60 * 1000);
+    const nextStr = new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit'}).format(next);
+    status.textContent = `Próximo: ${nextStr}`;
+  } else if(status){
+    status.textContent = '🔕 Desactivado';
+  }
+}
+
 /* ══ TOAST ══ */
 function showToast(msg){
   const t=document.getElementById('toast');
@@ -1420,8 +1548,9 @@ function showToast(msg){
   document.getElementById('chartFrom').value=from.toISOString().slice(0,10);
   document.getElementById('chartTo').value=to.toISOString().slice(0,10);
   await loadRecords();
-  // Try to flush any pending offline records
   if(isOnline) flushPendingQueue();
+  setupPushNotifications();
+  initReminder();
 })();
 </script>
 </body>
