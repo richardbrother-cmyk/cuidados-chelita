@@ -366,6 +366,12 @@ textarea.field-input{resize:vertical;min-height:60px;}
           <div class="malestar-toggle" data-key="dolor_intestinal" onclick="toggleMalestar(this)">
             <span class="malestar-label">🫁 Dolor intestinal</span><div class="toggle-pill"></div>
           </div>
+          <div class="malestar-toggle" data-key="dolor_cabeza" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🤕 Dolor de cabeza</span><div class="toggle-pill"></div>
+          </div>
+          <div class="malestar-toggle" data-key="escalofrios" onclick="toggleMalestar(this)">
+            <span class="malestar-label">🥶 Escalofríos</span><div class="toggle-pill"></div>
+          </div>
         </div>
       </div>
     </div><!-- end panel-left -->
@@ -684,7 +690,8 @@ const MALESTARES_LABELS={
   dolor:'Dolor', fatiga:'Fatiga', nauseas:'Náuseas', mareos:'Mareos',
   diarrea:'Diarrea', vomito:'Vómito', dif_hablar:'Dif. para hablar',
   dolor_evacuar:'Dolor al evacuar', dolor_estomago:'Dolor boca estómago',
-  dolor_intestinal:'Dolor intestinal'
+  dolor_intestinal:'Dolor intestinal', dolor_cabeza:'Dolor de cabeza',
+  escalofrios:'Escalofríos'
 };
 let activeMalestares={};
 
