@@ -567,6 +567,23 @@ textarea.field-input{resize:vertical;min-height:60px;}
           <div class="status-chip poor" onclick="selectEditStatus('poor',this)">🔴 Delicado</div>
         </div>
       </div>
+      <div class="modal-field full">
+        <span class="modal-label">🤒 Malestares</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:6px;" id="editMalestares">
+          <div class="malestar-toggle" data-key="dolor" onclick="toggleMalestar(this)"><span class="malestar-label">😣 Dolor</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="fatiga" onclick="toggleMalestar(this)"><span class="malestar-label">😴 Fatiga</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="nauseas" onclick="toggleMalestar(this)"><span class="malestar-label">🤢 Náuseas</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="mareos" onclick="toggleMalestar(this)"><span class="malestar-label">💫 Mareos</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="diarrea" onclick="toggleMalestar(this)"><span class="malestar-label">🚽 Diarrea</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="vomito" onclick="toggleMalestar(this)"><span class="malestar-label">🤮 Vómito</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="dif_hablar" onclick="toggleMalestar(this)"><span class="malestar-label">🗣️ Dif. para hablar</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="dolor_evacuar" onclick="toggleMalestar(this)"><span class="malestar-label">😖 Dolor al evacuar</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="dolor_estomago" onclick="toggleMalestar(this)"><span class="malestar-label">🫃 Dolor boca estómago</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="dolor_intestinal" onclick="toggleMalestar(this)"><span class="malestar-label">🫁 Dolor intestinal</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="dolor_cabeza" onclick="toggleMalestar(this)"><span class="malestar-label">🤕 Dolor de cabeza</span><div class="toggle-pill"></div></div>
+          <div class="malestar-toggle" data-key="escalofrios" onclick="toggleMalestar(this)"><span class="malestar-label">🥶 Escalofríos</span><div class="toggle-pill"></div></div>
+        </div>
+      </div>
       <div class="modal-field full"><span class="modal-label">💬 Observaciones</span><textarea class="modal-input" id="eNotes" style="min-height:56px;resize:vertical;"></textarea></div>
     </div>
     <div class="modal-actions">
@@ -745,6 +762,10 @@ function toggleMalestar(el){
   el.classList.toggle('active',!isActive);
   if(!isActive) activeMalestares[key]=true;
   else delete activeMalestares[key];
+  // Sync both containers (form + edit modal) if same key exists in both
+  document.querySelectorAll(`.malestar-toggle[data-key="${key}"]`).forEach(t=>{
+    t.classList.toggle('active', !!activeMalestares[key]);
+  });
 }
 function resetMalestares(){
   activeMalestares={};
@@ -758,8 +779,7 @@ function setMalestares(jsonStr){
     Object.keys(obj).forEach(k=>{
       if(obj[k]){
         activeMalestares[k]=true;
-        const el=document.querySelector(`.malestar-toggle[data-key="${k}"]`);
-        if(el) el.classList.add('active');
+        document.querySelectorAll(`.malestar-toggle[data-key="${k}"]`).forEach(el=>el.classList.add('active'));
       }
     });
   }catch(e){}
