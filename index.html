@@ -299,6 +299,20 @@ textarea.field-input{resize:vertical;min-height:60px;}
           <div class="form-field"><label class="field-label"><span>🌡️</span> Temperatura (°C)</label><input class="field-input" id="fTemp" type="number" step="0.1"></div>
           <div class="form-field"><label class="field-label"><span>💨</span> Saturación O₂ (%)</label><input class="field-input" id="fO2" type="number"></div>
           <div class="form-field"><label class="field-label"><span>💛</span> Bilis (ml)</label><input class="field-input" id="fBilis" type="number"></div>
+          <div class="form-field">
+            <label class="field-label"><span>🔍</span> Apariencia bilis</label>
+            <select class="field-input" id="fBilisAp">
+              <option value="">— Seleccionar —</option>
+              <option>Clara / Amarilla</option>
+              <option>Verde claro</option>
+              <option>Verde oscuro</option>
+              <option>Café / Marrón</option>
+              <option>Turbia</option>
+              <option>Con sedimento</option>
+              <option>Espumosa</option>
+              <option>Sanguinolenta</option>
+            </select>
+          </div>
           <div class="form-field"><label class="field-label"><span>🔢</span> Evacuaciones</label><input class="field-input" id="fEvac" type="number" min="0"></div>
           <div class="form-field">
             <label class="field-label"><span>🟤</span> Consistencia heces</label>
@@ -499,6 +513,20 @@ textarea.field-input{resize:vertical;min-height:60px;}
       <div class="modal-field"><span class="modal-label">🌡️ Temperatura °C</span><input class="modal-input" id="eTemp" type="number" step="0.1"></div>
       <div class="modal-field"><span class="modal-label">💨 Saturación O₂ %</span><input class="modal-input" id="eO2" type="number"></div>
       <div class="modal-field"><span class="modal-label">💛 Bilis (ml)</span><input class="modal-input" id="eBilis" type="number"></div>
+      <div class="modal-field">
+        <span class="modal-label">🔍 Apariencia bilis</span>
+        <select class="modal-input" id="eBilisAp">
+          <option value="">— —</option>
+          <option>Clara / Amarilla</option>
+          <option>Verde claro</option>
+          <option>Verde oscuro</option>
+          <option>Café / Marrón</option>
+          <option>Turbia</option>
+          <option>Con sedimento</option>
+          <option>Espumosa</option>
+          <option>Sanguinolenta</option>
+        </select>
+      </div>
       <div class="modal-field"><span class="modal-label">🔢 Evacuaciones</span><input class="modal-input" id="eEvac" type="number" min="0"></div>
       <div class="modal-field">
         <span class="modal-label">🟤 Consistencia</span>
@@ -659,6 +687,7 @@ async function loadRecords(){
       temp:r.temp||'', o2:r.o2||'', bilis:r.bilis||'',
       evac:r.evac||'', consistencia:r.consistencia||'',
       colorHeces:r.color_heces||'', notes:r.notes||'',
+      bilisAp:r.bilis_apariencia||'',
       malestares:r.malestares||null,
       datetime:r.datetime,
     }));
@@ -728,6 +757,7 @@ async function saveRecord(){
   const temp=document.getElementById('fTemp').value.trim();
   const o2=document.getElementById('fO2').value.trim();
   const bilis=document.getElementById('fBilis').value.trim();
+  const bilisAp=document.getElementById('fBilisAp').value;
   const evac=document.getElementById('fEvac').value.trim();
   const cons=document.getElementById('fConsistencia').value;
   const col=document.getElementById('fColor').value;
@@ -740,6 +770,7 @@ async function saveRecord(){
     status:activeStatus||'fair',
     bp:bp||null, hr:hr||null, temp:temp||null, o2:o2||null,
     bilis:bilis||null, evac:evac||null,
+    bilis_apariencia:bilisAp||null,
     consistencia:cons||null, color_heces:col||null,
     notes:notes||null,
     malestares:Object.keys(activeMalestares).length?JSON.stringify(activeMalestares):null,
@@ -779,6 +810,7 @@ function clearForm(){
   ['fBP','fHR','fTemp','fO2','fBilis','fEvac','fNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('fConsistencia').value='';
   document.getElementById('fColor').value='';
+  document.getElementById('fBilisAp').value='';
   activeStatus='';
   document.querySelectorAll('.status-chip').forEach(c=>c.classList.remove('active'));
   resetMalestares();
@@ -825,6 +857,7 @@ function renderLog(){
     if(r.temp)         v.push(`<div class="vital-badge">🌡️ ${r.temp}°C</div>`);
     if(r.o2)           v.push(`<div class="vital-badge">💨 ${r.o2}%</div>`);
     if(r.bilis)        v.push(`<div class="vital-badge">💛 ${r.bilis} ml</div>`);
+    if(r.bilisAp)      v.push(`<div class="vital-badge">🔍 ${r.bilisAp}</div>`);
     if(r.evac)         v.push(`<div class="vital-badge">🔢 ${r.evac} evacuac.</div>`);
     if(r.consistencia) v.push(`<div class="vital-badge">🟤 ${r.consistencia}</div>`);
     if(r.colorHeces)   v.push(`<div class="vital-badge">🎨 ${r.colorHeces}</div>`);
@@ -901,6 +934,7 @@ async function exportPDF(){
       {h:'Temp °C',       w:13, fn:r=>r.temp||'—'},
       {h:'SpO₂ %',       w:13, fn:r=>r.o2||'—'},
       {h:'Bilis ml',      w:13, fn:r=>r.bilis||'—'},
+      {h:'Apariencia bilis', w:20, fn:r=>r.bilisAp||'—'},
       {h:'Evacuac.',      w:13, fn:r=>r.evac||'—'},
       {h:'Consistencia',  w:20, fn:r=>r.consistencia||'—'},
       {h:'Color heces',   w:20, fn:r=>r.colorHeces||'—'},
@@ -1311,6 +1345,7 @@ function openEditModal(id){
   document.getElementById('eTemp').value=r.temp||'';
   document.getElementById('eO2').value=r.o2||'';
   document.getElementById('eBilis').value=r.bilis||'';
+  document.getElementById('eBilisAp').value=r.bilisAp||'';
   document.getElementById('eEvac').value=r.evac||'';
   document.getElementById('eConsistencia').value=r.consistencia||'';
   document.getElementById('eColor').value=r.colorHeces||'';
@@ -1340,6 +1375,7 @@ async function saveEdit(){
     temp:document.getElementById('eTemp').value.trim()||null,
     o2:document.getElementById('eO2').value.trim()||null,
     bilis:document.getElementById('eBilis').value.trim()||null,
+    bilis_apariencia:document.getElementById('eBilisAp').value||null,
     evac:document.getElementById('eEvac').value.trim()||null,
     consistencia:document.getElementById('eConsistencia').value||null,
     color_heces:document.getElementById('eColor').value||null,
